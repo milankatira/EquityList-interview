@@ -1,17 +1,38 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PlusIcon, Trash2Icon, EditIcon, ArrowLeftIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
+import toast from 'react-hot-toast';
+
+import {
+  DndContext,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  useDroppable,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Input } from '@/components/ui/input';
 
 interface Project {
   _id: string;
@@ -38,6 +59,89 @@ interface User {
   email: string;
 }
 
+interface TaskCardProps {
+  task: Task;
+  users: User[] | undefined;
+  handleEditTask: (task: Task) => void;
+  handleDeleteTask: (taskId: string) => void;
+}
+
+function TaskCard({ task, users, handleEditTask, handleDeleteTask }: TaskCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task._id });
+
+
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 0,
+    opacity: isDragging ? 0.8 : 1,
+  };
+
+  return (
+    <Card ref={setNodeRef} style={style} className="touch-action-none">
+      <CardHeader {...attributes} {...listeners} > {/* This div will be the drag handle */}
+        <CardTitle>{task.title}</CardTitle>
+        <CardDescription>{task.assignee ? `Assigned to: ${users?.find(u => u._id === task.assignee)?.name}` : 'Unassigned'}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex justify-between items-center">
+        <p className="text-sm text-gray-600 dark:text-gray-400">{task.description}</p>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditTask(task); }}>
+            <EditIcon className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDeleteTask(task._id); }}>
+            <Trash2Icon className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface ColumnProps {
+  id: string;
+  title: string;
+  tasks: Task[];
+  users: User[] | undefined;
+  handleEditTask: (task: Task) => void;
+  handleDeleteTask: (taskId: string) => void;
+}
+
+function Column({ id, title, tasks, users, handleEditTask, handleDeleteTask }: ColumnProps) {
+  const { setNodeRef } = useDroppable({
+    id: id,
+  });
+
+
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold">{title}</h2>
+      <SortableContext items={tasks.map(task => task._id)} strategy={verticalListSortingStrategy}>
+        <div ref={setNodeRef} id={id} className="min-h-[100px] rounded-md p-2 bg-gray-50 dark:bg-gray-700"> {/* Added ref and a background for visibility */}
+          {tasks.map(task => (
+            <TaskCard
+              key={task._id}
+              task={task}
+              users={users}
+              handleEditTask={handleEditTask}
+              handleDeleteTask={handleDeleteTask}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
+
 export default function ProjectDetailPage() {
   const { id: projectId } = useParams();
   const router = useRouter();
@@ -61,7 +165,7 @@ export default function ProjectDetailPage() {
     enabled: !!projectId,
   });
 
-  const { data: tasks, isLoading: isLoadingTasks, isError: isErrorTasks } = useQuery<Task[]>({
+  const { data: fetchedTasks, isLoading: isLoadingTasks, isError: isErrorTasks } = useQuery<Task[]>({
     queryKey: ['tasks', projectId],
     queryFn: async () => {
       const response = await api.get(`/projects/${projectId}/tasks`);
@@ -69,6 +173,15 @@ export default function ProjectDetailPage() {
     },
     enabled: !!projectId,
   });
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+
+  // Update local tasks state when fetchedTasks changes
+  useMemo(() => {
+    if (fetchedTasks) {
+      setTasks(fetchedTasks);
+    }
+  }, [fetchedTasks]);
 
   const { data: users, isLoading: isLoadingUsers, isError: isErrorUsers } = useQuery<User[]>({
     queryKey: ['users'],
@@ -93,13 +206,13 @@ export default function ProjectDetailPage() {
       setNewTaskDueDate('');
     },
     onError: (error: any) => {
-      alert(error.response?.data?.message || 'Failed to create task');
+      toast.error(error.response?.data?.message || 'Failed to create task');
     },
   });
 
   const updateTaskMutation = useMutation({
-    mutationFn: async (updatedTask: Partial<Task>) => {
-      const response = await api.put(`/tasks/${currentTask?._id}`, updatedTask);
+    mutationFn: async (updatedTask: Partial<Task> & { _id: string }) => {
+      const response = await api.put(`/tasks/${updatedTask._id}`, updatedTask);
       return response.data;
     },
     onSuccess: () => {
@@ -108,7 +221,7 @@ export default function ProjectDetailPage() {
       setCurrentTask(null);
     },
     onError: (error: any) => {
-      alert(error.response?.data?.message || 'Failed to update task');
+      toast.error(error.response?.data?.message || 'Failed to update task');
     },
   });
 
@@ -120,7 +233,7 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
     },
     onError: (error: any) => {
-      alert(error.response?.data?.message || 'Failed to delete task');
+      toast.error(error.response?.data?.message || 'Failed to delete task');
     },
   });
 
@@ -149,6 +262,7 @@ export default function ProjectDetailPage() {
     e.preventDefault();
     if (!currentTask) return;
     updateTaskMutation.mutate({
+      _id: currentTask._id,
       title: newTaskTitle,
       description: newTaskDescription,
       status: newTaskStatus,
@@ -160,6 +274,75 @@ export default function ProjectDetailPage() {
   const handleDeleteTask = (taskId: string) => {
     if (confirm('Are you sure you want to delete this task?')) {
       deleteTaskMutation.mutate(taskId);
+    }
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        delay: 0, // milliseconds
+        tolerance: 5, // pixels
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const onDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+
+
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    const activeTask = tasks.find(task => task._id === activeId);
+    let targetColumnId: Task['status'] | null = null;
+
+    if (overId === 'Todo' || overId === 'In Progress' || overId === 'Done') {
+      targetColumnId = overId as Task['status'];
+    } else {
+      const overTask = tasks.find(task => task._id === overId);
+      targetColumnId = overTask?.status || null;
+    }
+
+
+
+    if (!activeTask || !targetColumnId) return;
+
+    const activeColumnId = activeTask.status;
+
+    if (activeColumnId === targetColumnId) {
+      // Reordering within the same column
+      setTasks(prevTasks => {
+        const oldIndex = prevTasks.findIndex(task => task._id === activeId);
+        const newIndex = prevTasks.findIndex(task => task._id === overId);
+
+        if (oldIndex !== -1 && newIndex !== -1) {
+          const newTasks = arrayMove(prevTasks, oldIndex, newIndex);
+
+          return newTasks;
+        }
+        return prevTasks;
+      });
+    } else {
+      // Moving between columns
+      const newStatus: Task['status'] = targetColumnId;
+
+      // Optimistic UI update
+      setTasks(prevTasks => {
+        const updated = prevTasks.map(task =>
+          task._id === activeId ? { ...task, status: newStatus } : task
+        );
+
+        return updated;
+      });
+
+      // API call to update the task status
+      updateTaskMutation.mutate({ _id: activeId, status: newStatus });
     }
   };
 
@@ -188,76 +371,38 @@ export default function ProjectDetailPage() {
         </Button>
       </header>
 
-      <main className="flex-1 p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Todo</h2>
-          {tasksTodo?.map(task => (
-            <Card key={task._id}>
-              <CardHeader>
-                <CardTitle>{task.title}</CardTitle>
-                <CardDescription>{task.assignee ? `Assigned to: ${users?.find(u => u._id === task.assignee)?.name}` : 'Unassigned'}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex justify-between items-center">
-                <p className="text-sm text-gray-600 dark:text-gray-400">{task.description}</p>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => handleEditTask(task)}>
-                    <EditIcon className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDeleteTask(task._id)}>
-                    <Trash2Icon className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">In Progress</h2>
-          {tasksInProgress?.map(task => (
-            <Card key={task._id}>
-              <CardHeader>
-                <CardTitle>{task.title}</CardTitle>
-                <CardDescription>{task.assignee ? `Assigned to: ${users?.find(u => u._id === task.assignee)?.name}` : 'Unassigned'}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex justify-between items-center">
-                <p className="text-sm text-gray-600 dark:text-gray-400">{task.description}</p>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => handleEditTask(task)}>
-                    <EditIcon className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDeleteTask(task._id)}>
-                    <Trash2Icon className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Done</h2>
-          {tasksDone?.map(task => (
-            <Card key={task._id}>
-              <CardHeader>
-                <CardTitle>{task.title}</CardTitle>
-                <CardDescription>{task.assignee ? `Assigned to: ${users?.find(u => u._id === task.assignee)?.name}` : 'Unassigned'}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex justify-between items-center">
-                <p className="text-sm text-gray-600 dark:text-gray-400">{task.description}</p>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => handleEditTask(task)}>
-                    <EditIcon className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDeleteTask(task._id)}>
-                    <Trash2Icon className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </main>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragEnd={onDragEnd}
+      >
+        <main className="flex-1 p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Column
+            id="Todo"
+            title="Todo"
+            tasks={tasksTodo}
+            users={users}
+            handleEditTask={handleEditTask}
+            handleDeleteTask={handleDeleteTask}
+          />
+          <Column
+            id="In Progress"
+            title="In Progress"
+            tasks={tasksInProgress}
+            users={users}
+            handleEditTask={handleEditTask}
+            handleDeleteTask={handleDeleteTask}
+          />
+          <Column
+            id="Done"
+            title="Done"
+            tasks={tasksDone}
+            users={users}
+            handleEditTask={handleEditTask}
+            handleDeleteTask={handleDeleteTask}
+          />
+        </main>
+      </DndContext>
 
       {/* Create Task Modal */}
       <Dialog open={isCreateTaskModalOpen} onOpenChange={setIsCreateTaskModalOpen}>

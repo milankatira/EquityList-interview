@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 import api from '@/lib/api';
 
 export default function LoginPage() {
@@ -26,7 +27,7 @@ export default function LoginPage() {
       router.push('/dashboard');
     },
     onError: (error: any) => {
-      alert(error.response?.data?.message || 'Login failed');
+      toast.error(error.response?.data?.message || 'Login failed');
     },
   });
 
@@ -56,7 +57,7 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 mb-2">
                 <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
