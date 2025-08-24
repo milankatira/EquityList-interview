@@ -17,6 +17,7 @@ This is a full-stack application with a Node.js/Express/TypeScript backend and a
   - [API Endpoints](#api-endpoints)
   - [Project Structure](#project-structure)
   - [Screenshots](#screenshots)
+  - [E-R Diagram](#e-r-diagram)
 
 ## Technologies Used
 
@@ -134,3 +135,6 @@ frontend/
 ![Screenshot 3](screenshot/3.png)
 ![Screenshot 4](screenshot/4.png)
 ![Screenshot 5](screenshot/5.png)
+
+## E-R Diagram
+![E-R Diagram](screenshot/e-r-diagram.png)
