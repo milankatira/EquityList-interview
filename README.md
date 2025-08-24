@@ -18,7 +18,12 @@ This is a full-stack application with a Node.js/Express/TypeScript backend and a
   - [Project Structure](#project-structure)
   - [Screenshots](#screenshots)
   - [E-R Diagram](#e-r-diagram)
-  - [Future Enhancements & Optimizations](#future-enhancements--optimizations)
+  - [Future Enhancements \& Optimizations](#future-enhancements--optimizations)
+    - [Code Quality \& Development Experience](#code-quality--development-experience)
+    - [Architectural Improvements](#architectural-improvements)
+    - [Performance \& Scalability](#performance--scalability)
+    - [Feature Enhancements](#feature-enhancements)
+    - [Deployment \& Operations](#deployment--operations)
 
 ## Technologies Used
 
@@ -160,7 +165,7 @@ This section outlines potential future improvements and optimizations for the pr
 
 ### Feature Enhancements
 - **Task Prioritization:** Add functionality to assign and manage task priorities.
-- **Bandwidth Monitoring/Graphs:** Implement monitoring and visualization for network bandwidth usage, especially if real-time data transfer becomes significant.
+- **Bandwidth Monitoring/Graphs:** Implement monitoring and visualization for bandwidth
 - **Sprint Management:** Integrate features for managing development sprints, including sprint planning, task assignment, and progress tracking.
 
 ### Deployment & Operations
